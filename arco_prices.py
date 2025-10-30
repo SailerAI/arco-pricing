@@ -125,7 +125,7 @@ target_total_leads = st.sidebar.slider(
     "Quantidade de Leads a serem processados",
     min_value=0,
     max_value=3500,
-    value=2500,
+    value=1000,
     step=100,
 )
 
@@ -136,7 +136,7 @@ target_response_rate = (
         "Taxa de Resposta (%)",
         min_value=0.0,
         max_value=100.0,
-        value=15.0,
+        value=46.0,
         step=0.5,
         format="%.1f%%",
         help="POC alcançou 59,4%",
@@ -149,7 +149,7 @@ target_qualification_rate = (
         "Taxa de Qualificação (% de Respostas)",
         min_value=0.0,
         max_value=100.0,
-        value=25.0,
+        value=28.3,
         step=0.5,
         format="%.1f%%",
         help="POC alcançou 22,6%",
@@ -162,7 +162,7 @@ target_booking_rate = (
         "Taxa de Agendamento (% de Qualificados)",
         min_value=0.0,
         max_value=100.0,
-        value=33.0,
+        value=23.1,
         step=0.5,
         format="%.1f%%",
         help="POC alcançou 33,3%",
@@ -176,24 +176,59 @@ minimum_billing = st.sidebar.number_input(
     "Consumo Mínimo Mensal (R$)",
     min_value=0.0,
     max_value=50000.0,
-    value=0.0,
+    value=4997.0,
     step=100.0,
     help="Se o custo total for menor que este valor, você pagará o mínimo configurado",
 )
 
+
+# --- Função para formatar tabelas de preços ---
+def format_price_table(df, show_ranges=True):
+    """Formata a tabela de preços para melhor visualização"""
+    if show_ranges and "Mínimo" in df.columns and "Máximo" in df.columns:
+        # Criar coluna de faixa
+        df_display = df.copy()
+        faixas = []
+        for _, row in df_display.iterrows():
+            if row["Máximo"] >= 99999:
+                faixa = f"{int(row['Mínimo']):,}+"
+            else:
+                faixa = f"{int(row['Mínimo']):,} - {int(row['Máximo']):,}"
+            faixas.append(faixa)
+        df_display.insert(0, "Faixa", faixas)
+        df_display = df_display[["Faixa", "Valor"]].copy()
+        df_display["Valor"] = df_display["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+        return df_display
+    else:
+        df_display = df.copy()
+        if "Valor" in df_display.columns:
+            df_display["Valor"] = df_display["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+        return df_display
+
+
 # --- Tabelas de Preços Configuráveis ---
 st.sidebar.subheader("💰 Tabelas de Preços")
+st.sidebar.caption("Configure as faixas de preço por volume (preços escalonados)")
 
-with st.sidebar.expander("Tabela de Custo por Envio (Sem Resposta)"):
+with st.sidebar.expander("📧 Custo por Envio (Sem Resposta)", expanded=False):
+    st.caption("Custo fixo por lead que não respondeu")
     df_no_reply = pd.DataFrame([{"Valor": 0.20}])
-    # Este não precisa ser editado, mas mantemos a estrutura
-    st.dataframe(df_no_reply, hide_index=True)
+    df_no_reply_display = format_price_table(df_no_reply, show_ranges=False)
+    st.dataframe(
+        df_no_reply_display,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Valor": st.column_config.TextColumn("Custo por Lead", width="medium")
+        },
+    )
 
 
-with st.sidebar.expander("Tabela de Custo por Lead (com Resposta)"):
+with st.sidebar.expander("💬 Custo por Lead (com Resposta)", expanded=False):
+    st.caption("Preço por lead que respondeu, escalonado por volume de respostas")
     df_leads = pd.DataFrame(
         [
-            {"Mínimo": 0, "Máximo": 500, "Valor": 5.00},
+            {"Mínimo": 0, "Máximo": 250, "Valor": 5.00},
             {"Mínimo": 500, "Máximo": 1500, "Valor": 3.80},
             {"Mínimo": 1500, "Máximo": 2000, "Valor": 3.00},
             {"Mínimo": 2000, "Máximo": 3000, "Valor": 2.40},
@@ -205,29 +240,79 @@ with st.sidebar.expander("Tabela de Custo por Lead (com Resposta)"):
         ]
     )
     if ENABLE_PRICE_EDITING:
-        edited_df_leads = st.data_editor(df_leads, key="leads_editor", num_rows="dynamic")
+        edited_df_leads = st.data_editor(
+            df_leads,
+            key="leads_editor",
+            num_rows="dynamic",
+            column_config={
+                "Mínimo": st.column_config.NumberColumn(
+                    "Mínimo", format="%d", width="small"
+                ),
+                "Máximo": st.column_config.NumberColumn(
+                    "Máximo", format="%d", width="small"
+                ),
+                "Valor": st.column_config.NumberColumn(
+                    "Preço (R$)", format="%.2f", width="small"
+                ),
+            },
+            hide_index=True,
+        )
     else:
-        st.dataframe(df_leads, hide_index=True)
+        df_leads_display = format_price_table(df_leads, show_ranges=True)
+        st.dataframe(
+            df_leads_display,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Faixa": st.column_config.TextColumn("Volume", width="medium"),
+                "Valor": st.column_config.TextColumn("Preço por Lead", width="medium"),
+            },
+        )
         edited_df_leads = df_leads
 
-with st.sidebar.expander("Tabela de Custo por Lead Qualificado"):
+with st.sidebar.expander("✅ Custo por Lead Qualificado", expanded=False):
+    st.caption("Preço por lead qualificado, escalonado por volume de qualificados")
     df_qualified = pd.DataFrame(
         [
-            {"Mínimo": 0, "Máximo": 50, "Valor": 20.00},
-            {"Mínimo": 50, "Máximo": 100, "Valor": 15.00},
-            {"Mínimo": 100, "Máximo": 150, "Valor": 10.00},
-            {"Mínimo": 150, "Máximo": 99999, "Valor": 5.00},
+            {"Mínimo": 0, "Máximo": 100, "Valor": 20.00},
+            {"Mínimo": 100, "Máximo": 150, "Valor": 15.00},
+            {"Mínimo": 150, "Máximo": 200, "Valor": 10.00},
+            {"Mínimo": 200, "Máximo": 99999, "Valor": 5.00},
         ]
     )
     if ENABLE_PRICE_EDITING:
         edited_df_qualified = st.data_editor(
-            df_qualified, key="qualified_editor", num_rows="dynamic"
+            df_qualified,
+            key="qualified_editor",
+            num_rows="dynamic",
+            column_config={
+                "Mínimo": st.column_config.NumberColumn(
+                    "Mínimo", format="%d", width="small"
+                ),
+                "Máximo": st.column_config.NumberColumn(
+                    "Máximo", format="%d", width="small"
+                ),
+                "Valor": st.column_config.NumberColumn(
+                    "Preço (R$)", format="%.2f", width="small"
+                ),
+            },
+            hide_index=True,
         )
     else:
-        st.dataframe(df_qualified, hide_index=True)
+        df_qualified_display = format_price_table(df_qualified, show_ranges=True)
+        st.dataframe(
+            df_qualified_display,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Faixa": st.column_config.TextColumn("Volume", width="medium"),
+                "Valor": st.column_config.TextColumn("Preço por Lead", width="medium"),
+            },
+        )
         edited_df_qualified = df_qualified
 
-with st.sidebar.expander("Tabela de Custo por Reunião Agendada"):
+with st.sidebar.expander("📅 Custo por Reunião Agendada", expanded=False):
+    st.caption("Preço por reunião agendada, escalonado por volume de agendamentos")
     df_booked = pd.DataFrame(
         [
             {"Mínimo": 0, "Máximo": 20, "Valor": 100.00},
@@ -238,10 +323,35 @@ with st.sidebar.expander("Tabela de Custo por Reunião Agendada"):
     )
     if ENABLE_PRICE_EDITING:
         edited_df_booked = st.data_editor(
-            df_booked, key="booked_editor", num_rows="dynamic"
+            df_booked,
+            key="booked_editor",
+            num_rows="dynamic",
+            column_config={
+                "Mínimo": st.column_config.NumberColumn(
+                    "Mínimo", format="%d", width="small"
+                ),
+                "Máximo": st.column_config.NumberColumn(
+                    "Máximo", format="%d", width="small"
+                ),
+                "Valor": st.column_config.NumberColumn(
+                    "Preço (R$)", format="%.2f", width="small"
+                ),
+            },
+            hide_index=True,
         )
     else:
-        st.dataframe(df_booked, hide_index=True)
+        df_booked_display = format_price_table(df_booked, show_ranges=True)
+        st.dataframe(
+            df_booked_display,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Faixa": st.column_config.TextColumn("Volume", width="medium"),
+                "Valor": st.column_config.TextColumn(
+                    "Preço por Reunião", width="medium"
+                ),
+            },
+        )
         edited_df_booked = df_booked
 
 
